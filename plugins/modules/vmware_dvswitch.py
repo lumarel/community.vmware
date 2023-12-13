@@ -194,6 +194,12 @@ options:
                 type: int
                 description: Identifies the information related to the switch.
                 default: 0
+            switch_ip:
+                type: str
+                description:
+                    - Assign an IP address to see the distributed switch as a single network device in the NetFlow collector.
+                    - This is instead of as multiple devices corresponding to each host.
+                    - In an IPv6 environment, the ESXi hosts ignore the switch IP address.
             active_flow_timeout:
                 type: int
                 description: The time, in seconds, to wait before sending information after the flow is initiated.
@@ -267,6 +273,7 @@ EXAMPLES = r'''
         collector_ip: 192.168.10.50
         collector_port: 50034
         observation_domain_id: 0
+        switch_ip: 192.168.10.40
         active_flow_timeout: 60
         idle_flow_timeout: 15
         sampling_rate: 4096
@@ -305,6 +312,7 @@ result:
         "net_flow_collector_ip": "192.168.10.50",
         "net_flow_collector_port": 50034,
         "net_flow_observation_domain_id": 0,
+        "net_flow_switch_ip": "192.168.10.40",
         "net_flow_active_flow_timeout": 60,
         "net_flow_idle_flow_timeout": 15,
         "net_flow_sampling_rate": 4096,
@@ -392,6 +400,7 @@ class VMwareDvSwitch(PyVmomi):
         self.netFlow_collector_ip = self.module.params['net_flow'].get('collector_ip') or None
         self.netFlow_collector_port = self.module.params['net_flow'].get('collector_port')
         self.netFlow_observation_domain_id = self.module.params['net_flow'].get('observation_domain_id')
+        self.netFlow_switch_ip = self.module.params['net_flow'].get('switch_ip')
         self.netFlow_active_flow_timeout = self.module.params['net_flow'].get('active_flow_timeout')
         self.netFlow_idle_flow_timeout = self.module.params['net_flow'].get('idle_flow_timeout')
         self.netFlow_sampling_rate = self.module.params['net_flow'].get('sampling_rate')
@@ -528,6 +537,10 @@ class VMwareDvSwitch(PyVmomi):
                 results['net_flow_idle_flow_timeout'] = self.netFlow_idle_flow_timeout
                 results['net_flow_sampling_rate'] = self.netFlow_sampling_rate
                 results['net_flow_internal_flows_only'] = self.netFlow_internal_flows_only
+
+                results['net_flow_switch_ip'] = self.netFlow_switch_ip
+                if self.netFlow_switch_ip:
+                    spec.switchIpAddress = self.netFlow_switch_ip
             result = self.check_netFlow_config()
 
             changed_netFlow = result[1]
@@ -904,6 +917,13 @@ class VMwareDvSwitch(PyVmomi):
             results['net_flow_idle_flow_timeout'] = self.netFlow_idle_flow_timeout
             results['net_flow_sampling_rate'] = self.netFlow_sampling_rate
             results['net_flow_internal_flows_only'] = self.netFlow_internal_flows_only
+
+            results['net_flow_switch_ip'] = self.netFlow_switch_ip
+            if self.dvs.config.switchIpAddress != self.netFlow_switch_ip:
+                changed = changed_settings = True
+                changed_list.append("net_flow_switch_ip")
+                results['net_flow_switch_ip_previous'] = self.dvs.config.switchIpAddress
+                config_spec.switchIpAddress = self.netFlow_switch_ip
         (ipfixConfig, changed_netFlow, changed_collectorIpAddress, collectorIpAddress_previous,
          changed_collectorPort, collectorPort_previous, changed_observationDomainId, observationDomainId_previous,
          changed_activeFlowTimeout, activeFlowTimeout_previous, changed_idleFlowTimeout, idleFlowTimeout_previous,
@@ -1019,6 +1039,7 @@ def main():
                     collector_ip=dict(type='str'),
                     collector_port=dict(type='int', default=0),
                     observation_domain_id=dict(type='int', default=0),
+                    switch_ip=dict(type='str'),
                     active_flow_timeout=dict(type='int', default=60),
                     idle_flow_timeout=dict(type='int', default=15),
                     sampling_rate=dict(type='int', default=4096),
