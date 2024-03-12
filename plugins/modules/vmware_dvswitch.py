@@ -537,15 +537,13 @@ class VMwareDvSwitch(PyVmomi):
                 results['net_flow_idle_flow_timeout'] = self.netFlow_idle_flow_timeout
                 results['net_flow_sampling_rate'] = self.netFlow_sampling_rate
                 results['net_flow_internal_flows_only'] = self.netFlow_internal_flows_only
-
                 results['net_flow_switch_ip'] = self.netFlow_switch_ip
-                if self.netFlow_switch_ip:
-                    spec.switchIpAddress = self.netFlow_switch_ip
             result = self.check_netFlow_config()
 
-            changed_netFlow = result[1]
+            changed_netFlow = result[2]
             if changed_netFlow:
                 spec.ipfixConfig = result[0]
+                spec.switchIpAddress = result[1]
 
             if changed_multicast or changed_network_policy or changed_netFlow:
                 self.update_dvs_config(self.dvs, spec)
@@ -675,15 +673,22 @@ class VMwareDvSwitch(PyVmomi):
     def check_netFlow_config(self):
         """Check NetFlow config"""
         changed = changed_collectorIpAddress = changed_collectorPort = changed_observationDomainId = \
-            changed_activeFlowTimeout = changed_idleFlowTimeout = changed_samplingRate = changed_internalFlowsOnly = False
+            changed_activeFlowTimeout = changed_idleFlowTimeout = changed_samplingRate = changed_internalFlowsOnly = \
+            changed_switchIpAddress = False
         collectorIpAddress_previous = collectorPort_previous = observationDomainId_previous = activeFlowTimeout_previous = \
-            idleFlowTimeout_previous = samplingRate_previous = internalFlowsOnly_previous = None
+            idleFlowTimeout_previous = samplingRate_previous = internalFlowsOnly_previous = switchIpAddress_previous = None
 
         current_config = self.dvs.config.ipfixConfig
         if current_config is None:
             new_config = vim.dvs.VmwareDistributedVirtualSwitch.IpfixConfig()
         else:
             new_config = current_config
+        current_switchIpAddress = self.dvs.config.switchIpAddress
+        if current_switchIpAddress in None:
+            new_config_spec = vim.dvs.VmwareDistributedVirtualSwitch.ConfigSpec()
+            new_switchIpAddress = new_config_spec.switchIpAddress
+        else:
+            new_switchIpAddress = current_switchIpAddress
 
         if self.netFlow_collector_ip is not None:
             if current_config.collectorIpAddress != self.netFlow_collector_ip:
@@ -714,11 +719,16 @@ class VMwareDvSwitch(PyVmomi):
                 changed = changed_internalFlowsOnly = True
                 internalFlowsOnly_previous = current_config.internalFlowsOnly
                 new_config.internalFlowsOnly = self.netFlow_internal_flows_only
+            if current_switchIpAddress != self.netFlow_switch_ip:
+                changed = changed_switchIpAddress = True
+                switchIpAddress_previous = current_switchIpAddress
+                new_switchIpAddress = self.netFlow_switch_ip
 
-        return (new_config, changed, changed_collectorIpAddress, collectorIpAddress_previous,
+        return (new_config, new_switchIpAddress, changed, changed_collectorIpAddress, collectorIpAddress_previous,
                 changed_collectorPort, collectorPort_previous, changed_observationDomainId, observationDomainId_previous,
                 changed_activeFlowTimeout, activeFlowTimeout_previous, changed_idleFlowTimeout, idleFlowTimeout_previous,
-                changed_samplingRate, samplingRate_previous, changed_internalFlowsOnly, internalFlowsOnly_previous)
+                changed_samplingRate, samplingRate_previous, changed_internalFlowsOnly, internalFlowsOnly_previous,
+                changed_switchIpAddress, switchIpAddress_previous)
 
     def exit_unchanged(self):
         """Exit with status message"""
@@ -917,17 +927,12 @@ class VMwareDvSwitch(PyVmomi):
             results['net_flow_idle_flow_timeout'] = self.netFlow_idle_flow_timeout
             results['net_flow_sampling_rate'] = self.netFlow_sampling_rate
             results['net_flow_internal_flows_only'] = self.netFlow_internal_flows_only
-
             results['net_flow_switch_ip'] = self.netFlow_switch_ip
-            if self.dvs.config.switchIpAddress != self.netFlow_switch_ip:
-                changed = changed_settings = True
-                changed_list.append("net_flow_switch_ip")
-                results['net_flow_switch_ip_previous'] = self.dvs.config.switchIpAddress
-                config_spec.switchIpAddress = self.netFlow_switch_ip
-        (ipfixConfig, changed_netFlow, changed_collectorIpAddress, collectorIpAddress_previous,
-         changed_collectorPort, collectorPort_previous, changed_observationDomainId, observationDomainId_previous,
-         changed_activeFlowTimeout, activeFlowTimeout_previous, changed_idleFlowTimeout, idleFlowTimeout_previous,
-         changed_samplingRate, samplingRate_previous, changed_internalFlowsOnly, internalFlowsOnly_previous) = self.check_netFlow_config()
+
+        (ipfixConfig, switchIpAddress_netFlow, changed_netFlow, changed_collectorIpAddress, collectorIpAddress_previous,
+         changed_collectorPort, collectorPort_previous, changed_observationDomainId, observationDomainId_previous, changed_activeFlowTimeout,
+         activeFlowTimeout_previous, changed_idleFlowTimeout, idleFlowTimeout_previous, changed_samplingRate, samplingRate_previous,
+         changed_internalFlowsOnly, internalFlowsOnly_previous, changed_switchIpAddress, switchIpAddress_previous) = self.check_netFlow_config()
         if changed_netFlow:
             changed = changed_settings = True
             changed_list.append("netFlow")
@@ -945,8 +950,11 @@ class VMwareDvSwitch(PyVmomi):
                 results['net_flow_sampling_rate_previous'] = samplingRate_previous
             if changed_internalFlowsOnly:
                 results['net_flow_internal_flows_only_previous'] = internalFlowsOnly_previous
+            if changed_switchIpAddress:
+                results['net_flow_switch_ip_previous'] = switchIpAddress_previous
 
             config_spec.ipfixConfig = ipfixConfig
+            config_spec.switchIpAddress = switchIpAddress_netFlow
 
         if changed:
             if self.module.check_mode:
