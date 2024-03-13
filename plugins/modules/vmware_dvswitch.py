@@ -684,7 +684,7 @@ class VMwareDvSwitch(PyVmomi):
         else:
             new_config = current_config
         current_switchIpAddress = self.dvs.config.switchIpAddress
-        if current_switchIpAddress in None:
+        if current_switchIpAddress is None:
             new_config_spec = vim.dvs.VmwareDistributedVirtualSwitch.ConfigSpec()
             new_switchIpAddress = new_config_spec.switchIpAddress
         else:
